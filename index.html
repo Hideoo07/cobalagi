@@ -1,0 +1,312 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Sistem Rekomendasi Properti — AHP & Profile Matching</title>
+  <style>
+    :root{--bg:#f6f8fb;--card:#fff;--muted:#6b7280;--accent:#2563eb}
+    body{font-family:Inter,ui-sans-serif,system-ui,Segoe UI,Roboto,"Helvetica Neue",Arial;background:var(--bg);margin:0;padding:24px;color:#0f172a}
+    .container{max-width:1100px;margin:0 auto}
+    h1{margin:0 0 12px;font-size:20px}
+    .grid{display:grid;grid-template-columns:360px 1fr;gap:18px}
+    .card{background:var(--card);border-radius:10px;padding:16px;box-shadow:0 1px 2px rgba(15,23,42,0.05)}
+    label{display:block;font-size:13px;margin-bottom:6px;color:var(--muted)}
+    input[type=number],select,input[type=text]{width:100%;padding:10px;border:1px solid #e6e9ef;border-radius:8px}
+    .row{display:flex;gap:8px}
+    button{background:var(--accent);color:white;border:0;padding:10px 14px;border-radius:8px;cursor:pointer}
+    button.secondary{background:#f3f4f6;color:#111}
+    .metrics{display:flex;gap:8px;flex-wrap:wrap}
+    .metric{flex:1;min-width:140px;background:#f8fafc;padding:10px;border-radius:8px;text-align:center}
+    .list{margin-top:12px}
+    .card-item{display:flex;justify-content:space-between;align-items:center;padding:12px;border-radius:8px;border:1px solid #eef2ff;margin-bottom:8px}
+    .card-item .left{max-width:70%}
+    .badge{background:#eef2ff;color:#1e3a8a;padding:4px 8px;border-radius:999px;font-size:12px}
+    .muted{color:var(--muted);font-size:13px}
+    .controls{display:flex;gap:8px;align-items:center;margin-top:12px}
+    .spinner{border:3px solid #e6eefc;border-top:3px solid var(--accent);border-radius:50%;width:20px;height:20px;animation:spin 1s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Sistem Rekomendasi Properti — AHP & Profile Matching</h1>
+    <div class="grid">
+      <div class="card" id="formCard">
+        <form id="prefForm">
+          <label>Pekerjaan</label>
+          <select id="pekerjaan" required>
+            <option value="Umum">Umum</option>
+            <option value="Buruh">Buruh</option>
+            <option value="ASN">ASN</option>
+            <option value="Pengusaha">Pengusaha</option>
+          </select>
+
+          <label style="margin-top:10px">Budget Maksimal (Rp)</label>
+          <input type="number" id="max_price" placeholder="e.g. 500000000" min="0" />
+
+          <label style="margin-top:10px">Min. Luas Bangunan (m²)</label>
+          <input type="number" id="min_luas" placeholder="e.g. 36" min="0" />
+
+          <label style="margin-top:10px">Kamar Tidur</label>
+          <select id="kamar_tidur">
+            <option value="0">Semua</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5+</option>
+          </select>
+
+          <label style="margin-top:10px">Jenis Properti</label>
+          <select id="jenis_properti">
+            <option value="">Semua</option>
+          </select>
+
+          <hr style="margin:12px 0" />
+
+          <label>Provinsi</label>
+          <select id="provinsi">
+            <option value="">Semua Provinsi</option>
+          </select>
+
+          <label style="margin-top:10px">Kota / Kabupaten</label>
+          <select id="kota">
+            <option value="">— Pilih Provinsi dulu —</option>
+          </select>
+
+          <label style="margin-top:10px">Kecamatan</label>
+          <select id="kecamatan">
+            <option value="">— Pilih Kota dulu —</option>
+          </select>
+
+          <label style="margin-top:10px">Jumlah Rekomendasi (K)</label>
+          <select id="top_k">
+            <option value="5">Top 5</option>
+            <option value="10" selected>Top 10</option>
+            <option value="15">Top 15</option>
+            <option value="20">Top 20</option>
+          </select>
+
+          <div style="margin-top:12px;display:flex;gap:8px">
+            <button id="searchBtn" type="submit">🔍 Cari Rekomendasi</button>
+            <button id="exportBtn" class="secondary" type="button">⬇️ Export CSV</button>
+            <button id="resetBtn" class="secondary" type="button">Reset</button>
+          </div>
+
+          <div id="formErrors" style="margin-top:10px;color:#b91c1c"></div>
+        </form>
+      </div>
+
+      <div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div class="muted">Metrik Evaluasi (Top-K)</div>
+              <div class="metrics" id="metrics">
+                <div class="metric"><div class="muted">Precision@K</div><strong id="m_precision">-</strong></div>
+                <div class="metric"><div class="muted">Recall@K</div><strong id="m_recall">-</strong></div>
+                <div class="metric"><div class="muted">F1@K</div><strong id="m_f1">-</strong></div>
+                <div class="metric"><div class="muted">nDCG@K</div><strong id="m_ndcg">-</strong></div>
+                <div class="metric"><div class="muted">MRR</div><strong id="m_mrr">-</strong></div>
+              </div>
+            </div>
+            <div style="text-align:right;min-width:160px">
+              <div class="muted">Kontrol Tampilan</div>
+              <div class="controls">
+                <select id="sortBy">
+                  <option value="skor_desc">Skor (Tinggi → Rendah)</option>
+                  <option value="harga_asc">Harga (Rendah → Tinggi)</option>
+                  <option value="harga_desc">Harga (Tinggi → Rendah)</option>
+                  <option value="luas_desc">Luas (Tinggi → Rendah)</option>
+                </select>
+                <div id="loading" style="display:none" class="spinner" title="Memproses..."></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="list" id="resultsList">
+            <div class="muted">Hasil akan muncul di sini setelah proses pencarian.</div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-top:12px">
+          <div class="muted">Informasi Dataset</div>
+          <div id="dataInfo">Memuat...</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const apiBase = '' // same origin
+    let recommendations = []
+
+    async function fetchDataInfo(){
+      try{
+        const res = await fetch(apiBase + '/api/data-info')
+        const j = await res.json()
+        populateDataInfo(j)
+      }catch(e){
+        document.getElementById('dataInfo').innerText = 'Gagal memuat informasi dataset.'
+      }
+    }
+
+    function populateDataInfo(info){
+      const provSel = document.getElementById('provinsi')
+      provSel.innerHTML = '<option value="">Semua Provinsi</option>' + (info.provinsi_list || []).map(p=>`<option>${p}</option>`).join('')
+      const jenisSel = document.getElementById('jenis_properti')
+      jenisSel.innerHTML = '<option value="">Semua</option>' + (info.jenis_list || []).map(j=>`<option>${j}</option>`).join('')
+      document.getElementById('dataInfo').innerHTML = `<div>Total properti: <strong>${info.total_properti}</strong></div><div class="muted">Harga: ${formatRupiah(info.price_range.min)} — ${formatRupiah(info.price_range.max)}</div>`
+    }
+
+    function formatRupiah(x){
+      if(x==null) return '-'
+      return new Intl.NumberFormat('id-ID').format(x)
+    }
+
+    // Cascading dropdowns using /api/data-info (cached)
+    let cachedWilayah = null
+    async function loadWilayahCache(){
+      try{
+        const res = await fetch(apiBase + '/api/data-info')
+        const j = await res.json()
+        cachedWilayah = j.wilayah || {}
+      }catch(e){ cachedWilayah = {} }
+    }
+
+    function populateKota(provinsi){
+      const kotaSel = document.getElementById('kota')
+      const kecSel = document.getElementById('kecamatan')
+      kecSel.innerHTML = '<option value="">— Pilih Kota dulu —</option>'
+      if(!provinsi){ kotaSel.innerHTML = '<option value="">— Pilih Provinsi dulu —</option>'; return }
+      const list = cachedWilayah[provinsi] || {}
+      kotaSel.innerHTML = '<option value="">Semua</option>' + Object.keys(list).map(k=>`<option>${k}</option>`).join('')
+    }
+
+    function populateKecamatan(provinsi,kota){
+      const kecSel = document.getElementById('kecamatan')
+      if(!provinsi || !kota){ kecSel.innerHTML = '<option value="">— Pilih Kota dulu —</option>'; return }
+      const list = cachedWilayah[provinsi] || {}
+      const kecs = list[kota] || []
+      kecSel.innerHTML = '<option value="">Semua</option>' + kecs.map(k=>`<option>${k}</option>`).join('')
+    }
+
+    document.getElementById('provinsi').addEventListener('change', (e)=>{
+      populateKota(e.target.value)
+    })
+    document.getElementById('kota').addEventListener('change', (e)=>{
+      const prov = document.getElementById('provinsi').value
+      populateKecamatan(prov, e.target.value)
+    })
+
+    // Form submit
+    document.getElementById('prefForm').addEventListener('submit', async (ev)=>{
+      ev.preventDefault()
+      clearErrors()
+      const payload = collectForm()
+      const valid = validateForm(payload)
+      if(!valid) return
+      await doSearch(payload)
+    })
+
+    function collectForm(){
+      return {
+        pekerjaan: document.getElementById('pekerjaan').value,
+        max_price: document.getElementById('max_price').value || 0,
+        min_luas: document.getElementById('min_luas').value || 0,
+        kamar_tidur: document.getElementById('kamar_tidur').value || 0,
+        jenis_properti: document.getElementById('jenis_properti').value || '',
+        provinsi: document.getElementById('provinsi').value || '',
+        kota: document.getElementById('kota').value || '',
+        kecamatan: document.getElementById('kecamatan').value || '',
+        top_k: document.getElementById('top_k').value || 10,
+      }
+    }
+
+    function validateForm(d){
+      const errs = []
+      if(d.max_price && Number(d.max_price) < 100000000) errs.push('Budget minimal adalah Rp 100.000.000')
+      if(d.min_luas && Number(d.min_luas) <= 0) errs.push('Min. luas harus > 0')
+      if(isNaN(Number(d.top_k))) errs.push('Top-K tidak valid')
+      if(errs.length){ showErrors(errs); return false }
+      return true
+    }
+
+    function showErrors(errs){ document.getElementById('formErrors').innerHTML = errs.join('<br/>') }
+    function clearErrors(){ document.getElementById('formErrors').innerHTML = '' }
+
+    async function doSearch(payload){
+      try{
+        setLoading(true)
+        const res = await fetch(apiBase + '/api/rekomendasi', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)})
+        if(!res.ok){ const j = await res.json(); showErrors(Array.isArray(j.detail)? j.detail : [j.error || 'Terjadi kesalahan']); setLoading(false); return }
+        const j = await res.json()
+        recommendations = j.recommendations || []
+        updateMetrics(j.metrics)
+        renderRecommendations()
+      }catch(e){ showErrors(['Gagal terhubung ke server']) }
+      setLoading(false)
+    }
+
+    function updateMetrics(m){
+      document.getElementById('m_precision').innerText = m.precision_at_k ?? '-'
+      document.getElementById('m_recall').innerText = m.recall_at_k ?? '-'
+      document.getElementById('m_f1').innerText = m.f1_at_k ?? '-'
+      document.getElementById('m_ndcg').innerText = m.ndcg_at_k ?? '-'
+      document.getElementById('m_mrr').innerText = m.mrr ?? '-'
+    }
+
+    function renderRecommendations(){
+      const container = document.getElementById('resultsList')
+      if(!recommendations.length){ container.innerHTML = '<div class="muted">Tidak ada hasil.</div>'; return }
+      const sortBy = document.getElementById('sortBy').value
+      let list = [...recommendations]
+      if(sortBy==='skor_desc') list.sort((a,b)=>b.skor - a.skor)
+      else if(sortBy==='harga_asc') list.sort((a,b)=>a.harga - b.harga)
+      else if(sortBy==='harga_desc') list.sort((a,b)=>b.harga - a.harga)
+      else if(sortBy==='luas_desc') list.sort((a,b)=>b.luas_bangunan - a.luas_bangunan)
+
+      container.innerHTML = list.map(it=>`<div class="card-item">
+        <div class="left">
+          <div style="display:flex;align-items:center;gap:8px"><strong>Rp ${formatRupiah(it.harga)}</strong> <span class="muted">• ${it.jenis_properti} • ${it.kamar_tidur} kamar • ${it.luas_bangunan} m²</span></div>
+          <div class="muted">${it.kecamatan}, ${it.kota}, ${it.provinsi}</div>
+          <div style="margin-top:6px;font-size:13px">Skor akhir: <strong>${it.skor}</strong></div>
+        </div>
+        <div style="text-align:right">
+          <div class="badge">Rank ${it.rank}</div>
+          <div style="margin-top:8px"><button onclick='showDetail(${it.rank-1})' class="secondary">Detail</button></div>
+        </div>
+      </div>`).join('')
+    }
+
+    function showDetail(idx){
+      const it = recommendations[idx]
+      if(!it) return
+      alert(`Detail:\nHarga: Rp ${formatRupiah(it.harga)}\nLuas: ${it.luas_bangunan} m²\nKamar: ${it.kamar_tidur}\nJenis: ${it.jenis_properti}\nSkor: ${it.skor}\nDetail skor: ${JSON.stringify(it.detail_skor)}`)
+    }
+
+    function setLoading(v){ document.getElementById('loading').style.display = v? 'inline-block' : 'none'; document.getElementById('searchBtn').disabled = v }
+
+    document.getElementById('sortBy').addEventListener('change', renderRecommendations)
+    document.getElementById('exportBtn').addEventListener('click', ()=>{ exportCSV(recommendations) })
+    document.getElementById('resetBtn').addEventListener('click', ()=>{ document.getElementById('prefForm').reset(); recommendations=[]; renderRecommendations(); updateMetrics({precision_at_k:'-',recall_at_k:'-',f1_at_k:'-',ndcg_at_k:'-',mrr:'-'}) })
+
+    function exportCSV(arr){
+      if(!arr || !arr.length) return alert('Tidak ada data untuk diekspor')
+      const rows = arr.map(r=>({rank:r.rank,harga:r.harga,luas:r.luas_bangunan,kamar:r.kamar_tidur,jenis:r.jenis_properti,kecamatan:r.kecamatan,kota:r.kota,provinsi:r.provinsi,skor:r.skor}))
+      const keys = Object.keys(rows[0])
+      const csv = [keys.join(',')].concat(rows.map(r=>keys.map(k=>`"${String(r[k]).replace(/"/g,'""')}"`).join(','))).join('\n')
+      const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'})
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a'); a.href = url; a.download = 'rekomendasi.csv'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url)
+    }
+
+    // INIT
+    (async ()=>{
+      await loadWilayahCache()
+      await fetchDataInfo()
+    })()
+  </script>
+</body>
+</html>
